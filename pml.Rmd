@@ -1,0 +1,103 @@
+Predict How Well People Do Exercise
+========================================================
+
+* This is using the activitiy data collected from device to predict how well they do excercises.
+* The training data set is the weight lifting excercise dataset from http://groupware.les.inf.puc-rio.br/har .
+* We use the Random Forest model to do training and did a 10 cross fold validation.
+* The prediction accuracy is extremely high in the training and validation set.
+* We also predict the 20 testing sample which didn't have the classes labeled and submitted them for machine grading.
+
+
+### Data Processing
+
+First, we load the training data and take a look at them
+
+```{r cache=TRUE}
+# setwd('/Users/xuwh/Documents/codebase/personal/datascience-assignments/practical-ml')
+library(caret)
+training_all <- read.csv('pml-training.csv', header=T)
+head(training_all)
+```
+
+Obviously, some of the column like the row number, the name of the user and timestamps are meaningless to how well they did, so we just filter them out.
+There are also lots of NA and empty columns in the dataset, we filter them if more than 80% of the value in that column is NA or empty string.
+
+```{r cache=TRUE}
+# filter out feature meaning less.
+training_all <- training_all[,c(-1,-2,-3,-4,-5,-6,-7)]
+
+testing_all <- read.csv('pml-testing.csv', header=T)
+testing_all <- testing_all[,c(-1,-2,-3,-4,-5,-6,-7)]
+
+# then we will find lots of columns has only NA or empty string in their value.
+training <- training_all[, colMeans(is.na(training_all) | training_all == "" ) <= 0.8]
+```
+
+And then we could found that we reduce the number of columns from `r ncol(training_all)` to `r ncol(training)`.
+
+
+### Model Training
+
+With the cleaned data, we separate the training data set to 2 parts by 50/50 percentage, the first part is used for training, and the second part is used for testing to see the out of sample error.
+
+```{r cache=TRUE}
+inTrain <- createDataPartition(y=training$classe, p=0.5, list=F)
+training_data <- training[inTrain,]
+validation_data <- training[-inTrain,]
+```
+
+We pick the random forest model and using cross-validation for resampling, it might take a while to train the model.
+
+If we pick the oob in random forest for resampling, it might be even faster, but since the assignment want us to do the cross-validation, let's just do it. :-)
+
+```{r cache=TRUE}
+# try using oob for train control since it is faster
+# fitControl <- trainControl(method='oob')
+fitControl <- trainControl(method='cv')
+modelFit <- train(classe ~ ., data=training_data, method='rf',trControl=fitControl)
+```
+
+#### In Sample Error
+
+And if you print out the model training result, you could found that the accuracy in the training set is extremely high.
+```{r cache=TRUE}
+modelFit
+```
+
+#### Out of Sample Error
+
+And then we just use the model trained to predict the testing set we partitioned from the whole training data set.
+```{r cache=TRUE}
+prediction <- predict(modelFit, validation_data)
+table(validation_data$classe, prediction)
+result <- data.frame(label = validation_data$classe, prediction = prediction)
+accuracy <- nrow(result[result$label == result$prediction,])/nrow(result)
+accuracy
+```
+
+And you could found that tha accuracy on the testing set is also very high to `r accuracy`, which means the excellent resut is not a overfitting on the training data set.
+
+And we will expect an `r accuracy` out of sample error in the real test data set.
+
+### Prediction on the testing data set.
+
+And we would predict the real testing data with the model
+
+```{r cache=TRUE}
+test_predict <- predict(modelFit, testing_all)
+test_predict
+```
+
+And generate the submission text files
+
+```{r cache=TRUE}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(test_predict)
+```
+
